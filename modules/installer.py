@@ -310,6 +310,8 @@ def start(config_obj=config):
     if os.name != "nt":
         modules = []
         missing = []
+        packages = []
+
         for package in packages:
             try:
                 modules.append(import_module(mapping[package]))
