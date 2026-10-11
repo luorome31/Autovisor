@@ -225,16 +225,38 @@ async def evaluate_on_element(page: Page, selector: str, js: str, timeout: float
         return
 
 
+async def close_blocking_modal(page: Page) -> bool:
+    """尝试关闭 .ss2077-custom-modal 遮挡弹窗; 关掉一个返回 True, 无弹窗返回 False。
+
+    融合课/新版页面在课时切换或播放中会弹出此类模态框, 挡住后续点击。
+    除了 optimize_page 的初始关闭外, run_course 每次点课时前也需兜底一次。
+    """
+    close_selectors = (
+        ".ss2077-custom-modal .ss2077-custom-dialog:visible "
+        ".ss2077-custom-title > img.icon",
+    )
+    for selector in close_selectors:
+        try:
+            btn = page.locator(selector).first
+            if await btn.count() and await btn.is_visible():
+                await btn.click(timeout=1500)
+                await page.wait_for_timeout(300)
+                return True
+        except TargetClosedError:
+            raise
+        except Exception as exc:
+            logger.debug_throttled(
+                "close_modal",
+                f"关闭遮挡弹窗跳过({selector}): {logger.summarize_exception(exc)}",
+            )
+    return False
+
+
 async def optimize_page(
     page: Page, config: Config, catalog: CatalogSelectors
 ) -> None:
     try:
-        preread_close = page.locator(
-            ".ss2077-custom-modal .ss2077-custom-dialog:visible "
-            ".ss2077-custom-title > img.icon"
-        ).first
-        if await preread_close.count() and await preread_close.is_visible():
-            await preread_close.click(timeout=2000)
+        if await close_blocking_modal(page):
             logger.info("已关闭学前必读弹窗.")
 
         if catalog.name == "legacy":

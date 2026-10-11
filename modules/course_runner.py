@@ -1,7 +1,7 @@
 import time
 from enum import Enum
 
-from playwright.async_api import Page
+from playwright.async_api import Page, TimeoutError
 
 from modules.course_playback import elapsed_minutes, learn_lesson, review_lesson
 from modules.lesson_navigation import (
@@ -11,7 +11,7 @@ from modules.lesson_navigation import (
     wait_for_lesson_active,
 )
 from modules.tasks import has_visible_verification, wait_until_verification_hidden
-from modules.utils import get_filtered_class, get_lesson_name
+from modules.utils import close_blocking_modal, get_filtered_class, get_lesson_name
 from modules.fusion_adapter import FusionAdapter
 
 # 课时项(<li>)的点击发生在 set_default_timeout(10000) 之前, 不显式限时就会沿用
@@ -84,7 +84,15 @@ async def run_course(
     for index, lesson in enumerate(lessons):
         position = f"{index + 1}/{len(lessons)}"
         playback_enabled.clear()
-        await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
+        # 课时之间可能弹出 .ss2077-custom-modal 遮挡(学前必读/本课完成/学习时长提醒等),
+        # 会拦截点击, 先兜底关一次; 点击仍超时则再关一次后重试。
+        await close_blocking_modal(page)
+        try:
+            await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
+        except TimeoutError:
+            logger.warn("课时点击被遮挡,尝试关闭弹窗后重试.", shift=True)
+            await close_blocking_modal(page)
+            await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
         active = await wait_for_lesson_active(lesson, catalog)
         if not active:
             logger.warn("课时切换超时,正在重试一次.", shift=True)
@@ -94,6 +102,7 @@ async def run_course(
                 目录类型=catalog.name,
                 选择器=catalog.active,
             )
+            await close_blocking_modal(page)
             await lesson.click(timeout=LESSON_CLICK_TIMEOUT_MS)
             active = await wait_for_lesson_active(lesson, catalog)
         if not active:

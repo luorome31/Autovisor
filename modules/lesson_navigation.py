@@ -32,15 +32,19 @@ WISDOM_CATALOG = CatalogSelectors(
 
 FUSION_CATALOG = CatalogSelectors(
     name="fusion",
-    # 真实融合课小节的容器是 .chapter-item(完整课时列表, 含 finish-icon);
-    # .chapter-content-second 只是"当前展开层级的子节点"(真站实测仅 4/58),
-    # 用它会漏采大部分课时, 故校准为 .chapter-item。
-    item=".chapter-item",
-    active=".chapter-content-second.current",
+    # 融合课目录里 .chapter-item 有两种形态:
+    #   1) 节: .chapter-item > .item-box(节头, 不可播) + 若干 .chapter-content-second(子课时)
+    #   2) 叶课时: .chapter-item > .item-box(自身即课时, 无 .chapter-content-second 后代)
+    # 真实可播放课时 = 所有 .chapter-content-second + 无 .chapter-content-second 后代的 .chapter-item。
+    # 直接用 .chapter-item 会把节头也当课时点, 视频不切换, .current 也不会落在被点的容器里。
+    item=".chapter-content-second, .chapter-item:not(:has(.chapter-content-second))",
+    # 激活标记 .current 已确认挂在 .chapter-content-second 上; 叶课时的挂载位置未实测,
+    # 用宽松的 .current 让 wait_for_lesson_active 的自身 class 与后代两条判定都能兜住。
+    active=".current",
     finish=".finish-icon",
     title=".item-name",
     active_class="current",
-    # 融合课每课时带一个圆形进度环 .el-progress(在 item 内部),
+    # 融合课每课时带一个圆形进度环 .el-progress(在 .chapter-content-second 内部),
     # aria-valuenow 给出真实已学百分比(缓增, 而非只到 0/100)。
     # 补上后 lesson_progress 能读到中间值, 支撑"播完未到100->回退重播"上报。
     progress=".el-progress",
